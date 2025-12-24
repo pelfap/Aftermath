@@ -1,0 +1,139 @@
+import os
+import google.generativeai as genai
+import httpx
+import asyncio
+
+def test_environment_variables():
+    print("=" * 60)
+    print("Testing Environment Variables")
+    print("=" * 60)
+    
+    google_key = os.getenv("GOOGLE_API_KEY")
+    github_token = os.getenv("GITHUB_TOKEN")
+    
+    if google_key:
+        print(f"[PASS] GOOGLE_API_KEY is set (starts with: {google_key[:10]}...)")
+    else:
+        print("[FAIL] GOOGLE_API_KEY is NOT set")
+    
+    if github_token:
+        print(f"[PASS] GITHUB_TOKEN is set (starts with: {github_token[:10]}...)")
+    else:
+        print("[FAIL] GITHUB_TOKEN is NOT set")
+    
+    print()
+    return bool(google_key and github_token)
+
+
+def test_gemini_connection():
+    print("=" * 60)
+    print("Testing Google Gemini Connection")
+    print("=" * 60)
+    
+    try:
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            print("[FAIL] Cannot test - GOOGLE_API_KEY not set")
+            print()
+            return False
+        
+        genai.configure(api_key=api_key)
+        
+        print("Listing available models...")
+        models = []
+        for model in genai.list_models():
+            if 'generateContent' in model.supported_generation_methods:
+                models.append(model.name)
+                print(f"  - {model.name}")
+        
+        if models:
+            print(f"\n[PASS] Found {len(models)} available models")
+            
+            print("\nTesting a simple generation...")
+            test_model = genai.GenerativeModel(models[0])
+            response = test_model.generate_content("Say 'Hello, I am working!'")
+            print(f"[PASS] Model response: {response.text}")
+            print()
+            return True
+        else:
+            print("[FAIL] No models available")
+            print()
+            return False
+            
+    except Exception as e:
+        print(f"[FAIL] Error: {e}")
+        print()
+        return False
+
+
+async def test_github_connection():
+    print("=" * 60)
+    print("Testing GitHub API Connection")
+    print("=" * 60)
+    
+    try:
+        github_token = os.getenv("GITHUB_TOKEN")
+        if not github_token:
+            print("[FAIL] Cannot test - GITHUB_TOKEN not set")
+            print()
+            return False
+        
+        headers = {
+            "Authorization": f"Bearer {github_token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28"
+        }
+        
+        print("Fetching your GitHub user info...")
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://api.github.com/user",
+                headers=headers
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                print(f"[PASS] Authenticated as: {data['login']}")
+                print(f"   Name: {data.get('name', 'N/A')}")
+                print(f"   Public repos: {data.get('public_repos', 'N/A')}")
+                print()
+                return True
+            else:
+                print(f"[FAIL] GitHub API error: {response.status_code}")
+                print(f"   Response: {response.text}")
+                print()
+                return False
+                
+    except Exception as e:
+        print(f"[FAIL] Error: {e}")
+        print()
+        return False
+
+
+async def main():
+    print("\nStarting API Tests...\n")
+    
+    env_ok = test_environment_variables()
+    gemini_ok = test_gemini_connection()
+    github_ok = await test_github_connection()
+    
+    print("=" * 60)
+    print("Test Summary")
+    print("=" * 60)
+    print(f"Environment Variables: {'[PASS]' if env_ok else '[FAIL]'}")
+    print(f"Google Gemini API:     {'[PASS]' if gemini_ok else '[FAIL]'}")
+    print(f"GitHub API:            {'[PASS]' if github_ok else '[FAIL]'}")
+    print("=" * 60)
+    
+    if env_ok and gemini_ok and github_ok:
+        print("\nAll tests passed! You're ready to run the GitHub PR agent.")
+    else:
+        print("\nSome tests failed. Please fix the issues above.")
+        print("\nTo set environment variables:")
+        print("  export GOOGLE_API_KEY='your-key-here'")
+        print("  export GITHUB_TOKEN='your-token-here'")
+    print()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
